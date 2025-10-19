@@ -14,13 +14,34 @@ model User {
   lastName  String
   password  String // Stored as a bcrypt hash
   isVerified Boolean  @default(false)
-  role      UserRole @default(VIEWER)
+  role      UserRole  @default(VIEWER)
 
   refreshTokens RefreshToken[]
   products      Product[] // A user can create many products
-
+  otps          Otp[]     // Add this relation
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+enum OtpType {
+  EMAIL_VERIFICATION
+  LOGIN_VERIFICATION
+  PASSWORD_RESET
+}
+
+model Otp {
+  id          String   @id @default(cuid())
+  otpHash     String
+  expiresAt   DateTime
+  type        OtpType
+  used        Boolean  @default(false)
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+
+  @@index([userId, type])
 }
 
 enum UserRole {
