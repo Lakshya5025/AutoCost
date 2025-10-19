@@ -3,7 +3,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import { PrismaClient } from "@prisma/client";
-
+import v1Routes from "./routes/v1/index.js"; // <-- Add this import
 // Load environment variables
 dotenv.config();
 
@@ -32,7 +32,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // --- API Routes ---
-
+app.use("/api/v1", v1Routes); // <-- Add this line
 // Health check route
 app.get("/api/health", (req: Request, res: Response) => {
   res.status(200).json({ status: "UP", message: "AutoCost API is healthy" });
