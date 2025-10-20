@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,115 +10,54 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// User model for authentication
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
+  id        String   @id @default(uuid())
   firstName String
   lastName  String
-  password  String // Stored as a bcrypt hash
-  isVerified Boolean  @default(false)
-  role      UserRole  @default(VIEWER)
-
-  refreshTokens RefreshToken[]
-  products      Product[] // A user can create many products
-  otps          Otp[]     // Add this relation
+  email     String   @unique
+  password  String
+  otp       String?
+  otpExpiry DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  products  Product[]
 }
 
-enum OtpType {
-  EMAIL_VERIFICATION
-  LOGIN_VERIFICATION
-  PASSWORD_RESET
-}
-
-model Otp {
-  id          String   @id @default(cuid())
-  otpHash     String
-  expiresAt   DateTime
-  type        OtpType
-  used        Boolean  @default(false)
-  
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  createdAt   DateTime @default(now())
-
-  @@index([userId, type])
-}
-
-enum UserRole {
-  ADMIN
-  EDITOR
-  VIEWER
-}
-
-model RefreshToken {
-  id          String   @id @default(cuid())
-  hashedToken String
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  revoked     Boolean  @default(false)
-
-  @@unique([userId, hashedToken])
-}
-
+// Raw Material (Ingredient) model
 model RawMaterial {
-  id             String   @id @default(cuid())
-  name           String   @unique
-  // Cost is stored as Decimal for precision, representing cost per quintal
-  costPerQuintal Decimal  @db.Decimal(10, 2)
-  
-  // Relationships
-  ingredients    ProductIngredient[]
-  priceHistory   PriceHistory[]
-
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id        String             @id @default(uuid())
+  name      String             @unique // Each raw material name should be unique
+  cost      Float // Cost per quintal in INR
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  products  ProductIngredient[]
 }
 
+// Product model
 model Product {
-  id                       String   @id @default(cuid())
-  name                     String
-  // This is the "additionalCost" you mentioned, also per quintal
-  additionalCostPerQuintal Decimal  @db.Decimal(10, 2) @default(0.00)
+  id             String             @id @default(uuid())
+  name           String
+  additionalCost Float // e.g., labor, electricity per quintal
+  totalCost      Float // This will be calculated and stored
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  userId         String
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ingredients    ProductIngredient[]
 
-  // Relationships
-  ingredients ProductIngredient[]
-  userId      String
-  user        User                @relation(fields: [userId], references: [id], onDelete: Restrict) // Protects from user deletion
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@unique([userId, name]) // A user cannot have two products with the same name
+  @@unique([name, userId]) // A user cannot have two products with the same name
 }
 
-// This is the "join table" that connects Products and RawMaterials
+// This is a "join table" to link Products and RawMaterials
 // It stores the percentage of each ingredient in a product
 model ProductIngredient {
-  id            String   @id @default(cuid())
-  percentage    Decimal  @db.Decimal(5, 2) // e.g., 25.50 (for 25.50%)
-
-  // Relationships
+  id            String      @id @default(uuid())
+  percentage    Float // The percentage of this ingredient in the product
   productId     String
-  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade) // If product is deleted, this entry is deleted
+  product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
   rawMaterialId String
-  rawMaterial   RawMaterial @relation(fields: [rawMaterialId], references: [id], onDelete: Restrict) // Don't delete material if it's in a product
+  rawMaterial   RawMaterial @relation(fields: [rawMaterialId], references: [id], onDelete: Cascade)
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@unique([productId, rawMaterialId]) // A product can only have a specific ingredient once
-}
-
-// For Phase 2: Historical Price Tracking
-model PriceHistory {
-  id             String   @id @default(cuid())
-  rawMaterialId  String
-  rawMaterial    RawMaterial @relation(fields: [rawMaterialId], references: [id], onDelete: Cascade)
-  oldCost        Decimal     @db.Decimal(10, 2)
-  newCost        Decimal     @db.Decimal(10, 2)
-  changedAt      DateTime    @default(now())
+  @@unique([productId, rawMaterialId]) // An ingredient can only appear once per product
 }
