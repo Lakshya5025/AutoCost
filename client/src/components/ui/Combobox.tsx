@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { Combobox as HeadlessCombobox } from "@headlessui/react";
-import { CheckIcon, ChevronUpDownIcon } from "@heroicons/react/20/solid"; // We'll add this dependency next if needed, for now SVG
 
 interface ComboboxItem {
   id: string;
