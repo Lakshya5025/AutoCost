@@ -12,38 +12,43 @@ datasource db {
 
 // User model for authentication
 model User {
-  id        String   @id @default(uuid())
-  firstName String
-  lastName  String
-  email     String   @unique
-  password  String
-  otp       String?
-  otpExpiry DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  products  Product[]
+  id           String        @id @default(uuid())
+  firstName    String
+  lastName     String
+  email        String        @unique
+  password     String
+  otp          String?
+  otpExpiry    DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  products     Product[]
+  rawMaterials RawMaterial[] // Relation to raw materials
 }
 
 // Raw Material (Ingredient) model
 model RawMaterial {
-  id        String             @id @default(uuid())
-  name      String             @unique // Each raw material name should be unique
+  id        String              @id @default(uuid())
+  name      String
   cost      Float // Cost per quintal in INR
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
   products  ProductIngredient[]
+  userId    String // Foreign key to User
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([name, userId]) // A user cannot have two materials with the same name
 }
 
 // Product model
 model Product {
-  id             String             @id @default(uuid())
+  id             String              @id @default(uuid())
   name           String
   additionalCost Float // e.g., labor, electricity per quintal
   totalCost      Float // This will be calculated and stored
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
   userId         String
-  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   ingredients    ProductIngredient[]
 
   @@unique([name, userId]) // A user cannot have two products with the same name
@@ -61,3 +66,4 @@ model ProductIngredient {
 
   @@unique([productId, rawMaterialId]) // An ingredient can only appear once per product
 }
+

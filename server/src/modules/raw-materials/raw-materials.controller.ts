@@ -1,10 +1,10 @@
 import { type Request, type Response } from "express";
 import prisma from "../../lib/prisma.js";
+import { recalculateProductCostsForMaterial } from "../products/products.controller.js";
 
-// Handler to create a new raw material
 export const createRawMaterialHandler = async (req: Request, res: Response) => {
   const { name, cost } = req.body;
-  const userId = req.userId!; // We know userId exists because of the isAuthenticated middleware
+  const userId = req.userId!;
 
   try {
     const existingMaterial = await prisma.rawMaterial.findFirst({
@@ -18,11 +18,7 @@ export const createRawMaterialHandler = async (req: Request, res: Response) => {
     }
 
     const newMaterial = await prisma.rawMaterial.create({
-      data: {
-        name,
-        cost,
-        userId,
-      },
+      data: { name, cost, userId },
     });
     res.status(201).json(newMaterial);
   } catch (error) {
@@ -31,10 +27,8 @@ export const createRawMaterialHandler = async (req: Request, res: Response) => {
   }
 };
 
-// Handler to get all raw materials for the logged-in user
 export const getRawMaterialsHandler = async (req: Request, res: Response) => {
   const userId = req.userId!;
-
   try {
     const materials = await prisma.rawMaterial.findMany({
       where: { userId },
@@ -47,14 +41,12 @@ export const getRawMaterialsHandler = async (req: Request, res: Response) => {
   }
 };
 
-// Handler to update a raw material's cost
 export const updateRawMaterialHandler = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { cost } = req.body;
   const userId = req.userId!;
 
   try {
-    // updateMany is used to ensure the user can only update their own material
     const result = await prisma.rawMaterial.updateMany({
       where: { id, userId },
       data: { cost },
@@ -67,6 +59,11 @@ export const updateRawMaterialHandler = async (req: Request, res: Response) => {
       });
     }
 
+    // --- TRIGGER RECALCULATION ---
+    // After updating the cost, recalculate costs for all affected products.
+    await recalculateProductCostsForMaterial(id, userId);
+    // --- END TRIGGER ---
+
     const updatedMaterial = await prisma.rawMaterial.findUnique({
       where: { id },
     });
@@ -77,12 +74,24 @@ export const updateRawMaterialHandler = async (req: Request, res: Response) => {
   }
 };
 
-// Handler to delete a raw material
 export const deleteRawMaterialHandler = async (req: Request, res: Response) => {
   const { id } = req.params;
   const userId = req.userId!;
 
   try {
+    // Check if the material is used in any products
+    const usages = await prisma.productIngredient.count({
+      where: { rawMaterialId: id },
+    });
+
+    if (usages > 0) {
+      return res
+        .status(400)
+        .json({
+          message: `Cannot delete. This material is used in ${usages} product(s).`,
+        });
+    }
+
     const result = await prisma.rawMaterial.deleteMany({
       where: { id, userId },
     });
@@ -94,7 +103,7 @@ export const deleteRawMaterialHandler = async (req: Request, res: Response) => {
       });
     }
 
-    res.status(204).send(); // 204 No Content for successful deletion
+    res.status(204).send();
   } catch (error) {
     console.error("Failed to delete raw material:", error);
     res.status(500).json({ message: "Internal server error" });

@@ -28,11 +28,9 @@ export const registerUser = async (req: Request, res: Response) => {
     const otp = generateOtp();
     const otpExpiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    // Using `upsert` to handle both new user creation and existing user (if any logic changes)
     await prisma.user.upsert({
       where: { email },
       update: {
-        // This part might not be hit if user is always new, but good practice
         password: hashedPassword,
         otp,
         otpExpiry,
@@ -73,7 +71,6 @@ export const loginUser = async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // If password is valid, generate and send a new OTP for login verification
     const otp = generateOtp();
     const otpExpiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
@@ -120,7 +117,6 @@ export const verifyOtp = async (req: Request, res: Response) => {
         .json({ message: "OTP has expired. Please try again." });
     }
 
-    // OTP is valid. Clear OTP fields.
     await prisma.user.update({
       where: { email },
       data: {
@@ -129,12 +125,9 @@ export const verifyOtp = async (req: Request, res: Response) => {
       },
     });
 
-    // Setup session
-    // Note: The `Request` object needs to be augmented to include `session`
-    // We will create a type definition file for this.
-    (req.session as any).userId = user.id;
+    req.session.userId = user.id;
 
-    const { password, ...userWithoutPassword } = user;
+    const { password, otp: _, otpExpiry: __, ...userWithoutPassword } = user;
 
     return res.status(200).json({
       message: "OTP verified successfully. You are now logged in.",
@@ -144,4 +137,36 @@ export const verifyOtp = async (req: Request, res: Response) => {
     console.error("OTP Verification Error:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
+};
+
+export const getMeHandler = async (req: Request, res: Response) => {
+  try {
+    const user = await prisma.user.findUnique({
+      // FIX: Assert req.userId is not undefined. The middleware guarantees this.
+      where: { id: req.userId! },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const { password, otp, otpExpiry, ...userWithoutPassword } = user;
+
+    res.status(200).json({ user: userWithoutPassword });
+  } catch (error) {
+    console.error("Failed to get current user:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const logoutHandler = (req: Request, res: Response) => {
+  req.session.destroy((err) => {
+    if (err) {
+      return res
+        .status(500)
+        .json({ message: "Could not log out, please try again." });
+    }
+    res.clearCookie("connect.sid");
+    res.status(200).json({ message: "Logged out successfully" });
+  });
 };

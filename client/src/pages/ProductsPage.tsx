@@ -6,8 +6,10 @@ import apiClient from "../api";
 import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import Input from "../components/ui/Input";
+import ConfirmationModal from "../components/ui/ConfirmationModal";
+import Combobox from "../components/ui/Combobox";
 
-// Define types
+// --- Types ---
 interface RawMaterial {
   id: string;
   name: string;
@@ -25,11 +27,18 @@ interface Product {
   totalCost: number;
   ingredients: ProductIngredient[];
 }
+interface IngredientInput {
+  rawMaterial: RawMaterial | null;
+  percentage: string;
+}
 
+// --- Main Component ---
 const ProductsPage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   const fetchProducts = useCallback(async () => {
     setIsLoading(true);
@@ -47,134 +56,151 @@ const ProductsPage: React.FC = () => {
     fetchProducts();
   }, [fetchProducts]);
 
-  const handleDelete = async (id: string) => {
-    if (
-      window.confirm(
-        "Are you sure you want to delete this product? This action cannot be undone."
-      )
-    ) {
-      try {
-        await apiClient.delete(`/products/${id}`);
-        toast.success("Product deleted successfully.");
-        setProducts((prev) => prev.filter((p) => p.id !== id));
-      } catch (error) {
-        toast.error("Failed to delete product.");
-      }
+  const handleOpenDeleteModal = (product: Product) => {
+    setSelectedProduct(product);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!selectedProduct) return;
+    try {
+      await apiClient.delete(`/products/${selectedProduct.id}`);
+      toast.success("Product deleted successfully.");
+      setProducts((prev) => prev.filter((p) => p.id !== selectedProduct.id));
+      setIsDeleteModalOpen(false);
+      setSelectedProduct(null);
+    } catch (error) {
+      toast.error("Failed to delete product.");
     }
   };
 
   const currencyFormatter = useMemo(
     () =>
-      new Intl.NumberFormat("en-IN", {
-        style: "currency",
-        currency: "INR",
-        minimumFractionDigits: 2,
-      }),
+      new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }),
     []
   );
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-          <div>
-            <Link
-              to="/"
-              className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
-              &larr; Back to Dashboard
-            </Link>
-            <h1 className="text-3xl font-bold leading-tight text-gray-900 mt-1">
-              Products
-            </h1>
+    <>
+      <div className="min-h-screen bg-gray-100">
+        <header className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+            <div>
+              <Link
+                to="/"
+                className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+                &larr; Back to Dashboard
+              </Link>
+              <h1 className="text-3xl font-bold leading-tight text-gray-900 mt-1">
+                Products
+              </h1>
+            </div>
+            <Button onClick={() => setIsAddModalOpen(true)} className="w-auto">
+              Add New Product
+            </Button>
           </div>
-          <Button onClick={() => setIsAddModalOpen(true)} className="w-auto">
-            Add Product
-          </Button>
-        </div>
-      </header>
+        </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+        <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
           {isLoading ? (
-            <p className="p-6 text-center text-gray-500">Loading products...</p>
+            <div className="p-12 text-center text-gray-500">
+              Loading products...
+            </div>
           ) : products.length === 0 ? (
-            <div className="text-center p-12">
-              <h3 className="text-sm font-medium text-gray-900">
-                No products found
+            <div className="text-center bg-white shadow sm:rounded-lg p-12">
+              <h3 className="text-lg font-medium text-gray-900">
+                No Products Found
               </h3>
               <p className="mt-1 text-sm text-gray-500">
-                Get started by creating a new product.
+                Get started by creating your first product.
               </p>
               <div className="mt-6">
                 <Button
                   onClick={() => setIsAddModalOpen(true)}
-                  className="w-auto inline-flex">
-                  Add your first product
+                  className="w-auto inline-flex items-center">
+                  Add Product
                 </Button>
               </div>
             </div>
           ) : (
-            <ul className="divide-y divide-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {products.map((product) => (
-                <li key={product.id} className="p-4 sm:p-6 hover:bg-gray-50">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-indigo-600">
+                <div
+                  key={product.id}
+                  className="bg-white shadow-lg rounded-lg p-6 flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-start">
+                      <h3 className="text-lg font-bold text-gray-900">
                         {product.name}
-                      </p>
-                      <p className="text-2xl font-bold text-gray-900">
-                        {currencyFormatter.format(product.totalCost)}{" "}
-                        <span className="text-sm font-normal text-gray-500">
-                          / quintal
-                        </span>
-                      </p>
-                    </div>
-                    <div className="text-right">
+                      </h3>
                       <button
-                        onClick={() => handleDelete(product.id)}
-                        className="text-sm text-red-600 hover:text-red-800">
-                        Delete
+                        onClick={() => handleOpenDeleteModal(product)}
+                        className="text-gray-400 hover:text-red-600">
+                        &times;
                       </button>
                     </div>
-                  </div>
-                  <div className="mt-4">
-                    <p className="text-xs font-medium text-gray-500 uppercase">
-                      Composition
+                    <p className="text-3xl font-bold text-indigo-600 mt-2">
+                      {currencyFormatter.format(product.totalCost)}
+                      <span className="text-sm font-normal text-gray-500">
+                        {" "}
+                        / quintal
+                      </span>
                     </p>
-                    <ul className="mt-2 text-sm text-gray-600 list-disc list-inside">
-                      {product.ingredients.map((ing) => (
-                        <li key={ing.id}>
-                          {ing.rawMaterial.name}: {ing.percentage}%
-                        </li>
-                      ))}
-                      {product.additionalCost > 0 && (
-                        <li>
-                          Additional Costs:{" "}
-                          {currencyFormatter.format(product.additionalCost)}
-                        </li>
-                      )}
-                    </ul>
+                    <div className="mt-4 pt-4 border-t">
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                        Composition
+                      </h4>
+                      <ul className="mt-2 space-y-1 text-sm text-gray-700">
+                        {product.ingredients.map((ing) => (
+                          <li key={ing.id} className="flex justify-between">
+                            <span>{ing.rawMaterial.name}</span>
+                            <span>{ing.percentage}%</span>
+                          </li>
+                        ))}
+                        {product.additionalCost > 0 && (
+                          <li className="flex justify-between font-medium">
+                            <span>Additional Costs</span>
+                            <span>
+                              {currencyFormatter.format(product.additionalCost)}
+                            </span>
+                          </li>
+                        )}
+                      </ul>
+                    </div>
                   </div>
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
-        </div>
-      </main>
+        </main>
+      </div>
 
       <AddProductModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onProductAdded={() => {
           setIsAddModalOpen(false);
-          fetchProducts(); // Refetch all products to get the latest list and costs
+          fetchProducts();
         }}
       />
-    </div>
+
+      {selectedProduct && (
+        <ConfirmationModal
+          isOpen={isDeleteModalOpen}
+          onClose={() => {
+            setIsDeleteModalOpen(false);
+            setSelectedProduct(null);
+          }}
+          onConfirm={handleDeleteConfirm}
+          title="Delete Product"
+          message={`Are you sure you want to delete "${selectedProduct.name}"? This action cannot be undone.`}
+        />
+      )}
+    </>
   );
 };
+
+// --- Add Product Modal Component ---
 
 const AddProductModal: React.FC<{
   isOpen: boolean;
@@ -183,45 +209,80 @@ const AddProductModal: React.FC<{
 }> = ({ isOpen, onClose, onProductAdded }) => {
   const [name, setName] = useState("");
   const [additionalCost, setAdditionalCost] = useState("0");
-  const [ingredients, setIngredients] = useState([
-    { rawMaterialId: "", percentage: "" },
+  const [ingredients, setIngredients] = useState<IngredientInput[]>([
+    { rawMaterial: null, percentage: "" },
   ]);
   const [availableMaterials, setAvailableMaterials] = useState<RawMaterial[]>(
     []
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch available raw materials when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      const fetchMats = async () => {
-        try {
-          const response = await apiClient.get<RawMaterial[]>("/raw-materials");
-          setAvailableMaterials(response.data);
-        } catch (error) {
-          toast.error("Could not load raw materials.");
-        }
-      };
-      fetchMats();
+  const [newMaterialName, setNewMaterialName] = useState("");
+  const [newMaterialCost, setNewMaterialCost] = useState("");
+  const [isCreateMaterialModalOpen, setCreateMaterialModalOpen] =
+    useState(false);
+  const [materialCreationCallback, setMaterialCreationCallback] = useState<
+    ((newMaterial: RawMaterial) => void) | null
+  >(null);
+
+  const fetchMaterials = useCallback(async () => {
+    try {
+      const response = await apiClient.get<RawMaterial[]>("/raw-materials");
+      setAvailableMaterials(response.data);
+    } catch (error) {
+      toast.error("Could not load raw materials.");
     }
-  }, [isOpen]);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) fetchMaterials();
+  }, [isOpen, fetchMaterials]);
 
   const handleIngredientChange = (
     index: number,
-    field: "rawMaterialId" | "percentage",
-    value: string
+    field: "rawMaterial" | "percentage",
+    value: any
   ) => {
     const newIngredients = [...ingredients];
     newIngredients[index] = { ...newIngredients[index], [field]: value };
     setIngredients(newIngredients);
   };
 
-  const addIngredientRow = () => {
-    setIngredients([...ingredients, { rawMaterialId: "", percentage: "" }]);
+  const addIngredientRow = () =>
+    setIngredients([...ingredients, { rawMaterial: null, percentage: "" }]);
+  const removeIngredientRow = (index: number) =>
+    setIngredients(ingredients.filter((_, i) => i !== index));
+
+  const handleCreateNewMaterial = (
+    name: string,
+    callback: (newMaterial: RawMaterial) => void
+  ) => {
+    setNewMaterialName(name);
+    setMaterialCreationCallback(() => callback);
+    setCreateMaterialModalOpen(true);
   };
 
-  const removeIngredientRow = (index: number) => {
-    setIngredients(ingredients.filter((_, i) => i !== index));
+  const handleConfirmCreateMaterial = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const response = await apiClient.post<RawMaterial>("/raw-materials", {
+        name: newMaterialName,
+        cost: parseFloat(newMaterialCost),
+      });
+      toast.success(`'${newMaterialName}' created successfully.`);
+      const newMaterial = response.data;
+
+      await fetchMaterials(); // Refetch all materials
+      materialCreationCallback?.(newMaterial); // Use callback to set it in the combobox
+
+      setCreateMaterialModalOpen(false);
+      setNewMaterialName("");
+      setNewMaterialCost("");
+    } catch (error: any) {
+      toast.error(
+        error.response?.data?.message || "Failed to create material."
+      );
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -233,10 +294,14 @@ const AddProductModal: React.FC<{
     );
     if (Math.abs(totalPercentage - 100) > 0.01) {
       toast.error(
-        `Percentages must add up to 100. Current total: ${totalPercentage.toFixed(
+        `Percentages must add up to 100%. Current total: ${totalPercentage.toFixed(
           2
         )}%`
       );
+      return;
+    }
+    if (ingredients.some((i) => !i.rawMaterial)) {
+      toast.error("Please select a raw material for each ingredient.");
       return;
     }
 
@@ -246,17 +311,17 @@ const AddProductModal: React.FC<{
         name,
         additionalCost: parseFloat(additionalCost) || 0,
         ingredients: ingredients.map((i) => ({
-          rawMaterialId: i.rawMaterialId,
+          rawMaterialId: i.rawMaterial!.id,
           percentage: parseFloat(i.percentage),
         })),
       };
       await apiClient.post("/products", payload);
       toast.success("Product created successfully!");
       onProductAdded();
-      // Reset form
+      // Reset form state
       setName("");
       setAdditionalCost("0");
-      setIngredients([{ rawMaterialId: "", percentage: "" }]);
+      setIngredients([{ rawMaterial: null, percentage: "" }]);
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to create product.");
     } finally {
@@ -265,105 +330,131 @@ const AddProductModal: React.FC<{
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Create New Product">
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <Input
-          label="Product Name"
-          id="product-name"
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-        />
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Ingredients
-          </label>
-          <div className="space-y-3 mt-1">
-            {ingredients.map((ing, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <select
-                  value={ing.rawMaterialId}
-                  onChange={(e) =>
-                    handleIngredientChange(
-                      index,
-                      "rawMaterialId",
-                      e.target.value
-                    )
-                  }
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                  required>
-                  <option value="" disabled>
-                    Select Material
-                  </option>
-                  {availableMaterials.map((mat) => (
-                    <option key={mat.id} value={mat.id}>
-                      {mat.name}
-                    </option>
-                  ))}
-                </select>
-                <Input
-                  label=""
-                  id={`percentage-${index}`}
-                  type="number"
-                  value={ing.percentage}
-                  onChange={(e) =>
-                    handleIngredientChange(index, "percentage", e.target.value)
-                  }
-                  required
-                  placeholder="%"
-                  className="w-24"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeIngredientRow(index)}
-                  className="text-gray-400 hover:text-red-600"
-                  disabled={ingredients.length <= 1}>
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                  </svg>
-                </button>
-              </div>
-            ))}
+    <>
+      <Modal isOpen={isOpen} onClose={onClose} title="Create New Product">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <Input
+            label="Product Name"
+            id="product-name"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Ingredients
+            </label>
+            <div className="space-y-3 mt-1">
+              {ingredients.map((ing, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <div className="flex-grow">
+                    <Combobox
+                      items={availableMaterials}
+                      selectedValue={ing.rawMaterial}
+                      onChange={(value) =>
+                        handleIngredientChange(index, "rawMaterial", value)
+                      }
+                      onCreateNew={(name) =>
+                        handleCreateNewMaterial(name, (newMat) =>
+                          handleIngredientChange(index, "rawMaterial", newMat)
+                        )
+                      }
+                    />
+                  </div>
+                  <Input
+                    label=""
+                    id={`percentage-${index}`}
+                    type="number"
+                    step="0.01"
+                    value={ing.percentage}
+                    onChange={(e) =>
+                      handleIngredientChange(
+                        index,
+                        "percentage",
+                        e.target.value
+                      )
+                    }
+                    required
+                    placeholder="%"
+                    className="w-24"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeIngredientRow(index)}
+                    className="text-gray-400 hover:text-red-600 p-2"
+                    disabled={ingredients.length <= 1}>
+                    &times;
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={addIngredientRow}
+              className="mt-2 text-sm font-medium text-indigo-600 hover:text-indigo-500">
+              + Add Ingredient
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={addIngredientRow}
-            className="mt-2 text-sm font-medium text-indigo-600 hover:text-indigo-500">
-            + Add another ingredient
-          </button>
-        </div>
+          <Input
+            label="Additional Costs per Quintal (INR)"
+            id="additional-cost"
+            type="number"
+            step="0.01"
+            value={additionalCost}
+            onChange={(e) => setAdditionalCost(e.target.value)}
+          />
+          <div className="flex justify-end gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50">
+              Cancel
+            </button>
+            <Button type="submit" isLoading={isSubmitting} className="w-auto">
+              Create Product
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
-        <Input
-          label="Additional Costs per Quintal (INR)"
-          id="additional-cost"
-          type="number"
-          value={additionalCost}
-          onChange={(e) => setAdditionalCost(e.target.value)}
-        />
-
-        <div className="flex justify-end gap-3 pt-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50">
-            Cancel
-          </button>
-          <Button type="submit" isLoading={isSubmitting} className="w-auto">
-            Create Product
-          </Button>
-        </div>
-      </form>
-    </Modal>
+      <Modal
+        isOpen={isCreateMaterialModalOpen}
+        onClose={() => setCreateMaterialModalOpen(false)}
+        title={`Create New Material: ${newMaterialName}`}>
+        <form onSubmit={handleConfirmCreateMaterial} className="space-y-4">
+          <Input
+            label="Material Name"
+            id="new-mat-name"
+            type="text"
+            value={newMaterialName}
+            disabled
+            className="bg-gray-100"
+          />
+          <Input
+            label="Cost per Quintal (INR)"
+            id="new-mat-cost"
+            type="number"
+            step="0.01"
+            value={newMaterialCost}
+            onChange={(e) => setNewMaterialCost(e.target.value)}
+            required
+            autoFocus
+          />
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setCreateMaterialModalOpen(false)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50">
+              Cancel
+            </button>
+            <Button type="submit" className="w-auto">
+              Create and Use
+            </Button>
+          </div>
+        </form>
+      </Modal>
+    </>
   );
 };
 
