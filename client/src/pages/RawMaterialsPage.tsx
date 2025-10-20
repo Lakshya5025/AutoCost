@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import apiClient from "../api";
+import { useAuth } from "../contexts/AuthContext";
 
 import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
@@ -24,6 +25,8 @@ const RawMaterialsPage: React.FC = () => {
   const [selectedMaterial, setSelectedMaterial] = useState<RawMaterial | null>(
     null
   );
+  const { logout } = useAuth();
+  const navigate = useNavigate();
 
   // Fetch materials from the API
   const fetchMaterials = useCallback(async () => {
@@ -31,12 +34,18 @@ const RawMaterialsPage: React.FC = () => {
     try {
       const response = await apiClient.get<RawMaterial[]>("/raw-materials");
       setMaterials(response.data);
-    } catch (error) {
-      toast.error("Failed to fetch raw materials.");
+    } catch (error: any) {
+      if (error.response?.status === 401) {
+        toast.error("Session expired. Please log in again.");
+        await logout();
+        navigate("/login");
+      } else {
+        toast.error("Failed to fetch raw materials.");
+      }
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [logout, navigate]);
 
   useEffect(() => {
     fetchMaterials();
@@ -56,8 +65,9 @@ const RawMaterialsPage: React.FC = () => {
     if (!selectedMaterial) return;
     try {
       await apiClient.delete(`/raw-materials/${selectedMaterial.id}`);
-      toast.success("Raw material deleted successfully.");
-      setMaterials((prev) => prev.filter((m) => m.id !== selectedMaterial.id));
+      toast.success(`"${selectedMaterial.name}" deleted successfully.`);
+      // Refetch materials to ensure consistency with the backend
+      await fetchMaterials();
       setIsDeleteModalOpen(false);
       setSelectedMaterial(null);
     } catch (error) {
@@ -77,12 +87,12 @@ const RawMaterialsPage: React.FC = () => {
   return (
     <>
       <div className="min-h-screen bg-gray-100">
-        <header className="bg-white shadow-sm">
+        <header className="bg-white shadow-sm sticky top-0 z-10">
           <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
             <div>
               <Link
                 to="/"
-                className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+                className="text-sm font-medium text-indigo-600 hover:text-indigo-500 flex items-center gap-1">
                 &larr; Back to Dashboard
               </Link>
               <h1 className="text-3xl font-bold leading-tight text-gray-900 mt-1">
@@ -90,7 +100,7 @@ const RawMaterialsPage: React.FC = () => {
               </h1>
             </div>
             <Button onClick={() => setIsAddModalOpen(true)} className="w-auto">
-              Add New Material
+              Add Material
             </Button>
           </div>
         </header>
@@ -187,12 +197,8 @@ const RawMaterialsPage: React.FC = () => {
             setSelectedMaterial(null);
           }}
           material={selectedMaterial}
-          onMaterialUpdated={(updatedMaterial) => {
-            setMaterials((prev) =>
-              prev.map((m) =>
-                m.id === updatedMaterial.id ? updatedMaterial : m
-              )
-            );
+          onMaterialUpdated={() => {
+            fetchMaterials(); // Refetch all materials to get updated costs and product prices
             setIsEditModalOpen(false);
             setSelectedMaterial(null);
           }}
@@ -208,7 +214,7 @@ const RawMaterialsPage: React.FC = () => {
           }}
           onConfirm={handleDeleteConfirm}
           title="Delete Raw Material"
-          message={`Are you sure you want to delete "${selectedMaterial.name}"? This action cannot be undone.`}
+          message={`Are you sure you want to delete "${selectedMaterial.name}"? This will remove it from all products and cannot be undone.`}
         />
       )}
     </>
@@ -261,6 +267,7 @@ const AddRawMaterialModal: React.FC<{
           id="cost"
           type="number"
           step="0.01"
+          min="0"
           value={cost}
           onChange={(e) => setCost(e.target.value)}
           required
@@ -286,7 +293,7 @@ const EditRawMaterialModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
   material: RawMaterial;
-  onMaterialUpdated: (material: RawMaterial) => void;
+  onMaterialUpdated: () => void;
 }> = ({ isOpen, onClose, material, onMaterialUpdated }) => {
   const [cost, setCost] = useState(material.cost.toString());
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -299,13 +306,15 @@ const EditRawMaterialModal: React.FC<{
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      const response = await apiClient.put(`/raw-materials/${material.id}`, {
+      await apiClient.put(`/raw-materials/${material.id}`, {
         cost: parseFloat(cost),
       });
-      toast.success("Raw material updated successfully!");
-      onMaterialUpdated(response.data);
-    } catch (error) {
-      toast.error("Failed to update material.");
+      toast.success(`Cost for "${material.name}" updated successfully!`);
+      onMaterialUpdated();
+    } catch (error: any) {
+      toast.error(
+        error.response?.data?.message || "Failed to update material."
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -330,6 +339,7 @@ const EditRawMaterialModal: React.FC<{
           id="edit-cost"
           type="number"
           step="0.01"
+          min="0"
           value={cost}
           onChange={(e) => setCost(e.target.value)}
           required

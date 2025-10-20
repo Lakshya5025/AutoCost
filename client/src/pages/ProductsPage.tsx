@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import apiClient from "../api";
+import { useAuth } from "../contexts/AuthContext";
 
 import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
@@ -28,6 +29,8 @@ interface Product {
   ingredients: ProductIngredient[];
 }
 interface IngredientInput {
+  // Use a unique key for React lists that is stable
+  key: string;
   rawMaterial: RawMaterial | null;
   percentage: string;
 }
@@ -39,18 +42,26 @@ const ProductsPage: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const { logout } = useAuth();
+  const navigate = useNavigate();
 
   const fetchProducts = useCallback(async () => {
     setIsLoading(true);
     try {
       const response = await apiClient.get<Product[]>("/products");
       setProducts(response.data);
-    } catch (error) {
-      toast.error("Failed to fetch products.");
+    } catch (error: any) {
+      if (error.response?.status === 401) {
+        toast.error("Session expired. Please log in again.");
+        await logout();
+        navigate("/login");
+      } else {
+        toast.error("Failed to fetch products.");
+      }
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [logout, navigate]);
 
   useEffect(() => {
     fetchProducts();
@@ -65,12 +76,12 @@ const ProductsPage: React.FC = () => {
     if (!selectedProduct) return;
     try {
       await apiClient.delete(`/products/${selectedProduct.id}`);
-      toast.success("Product deleted successfully.");
+      toast.success(`"${selectedProduct.name}" deleted successfully.`);
       setProducts((prev) => prev.filter((p) => p.id !== selectedProduct.id));
       setIsDeleteModalOpen(false);
       setSelectedProduct(null);
-    } catch (error) {
-      toast.error("Failed to delete product.");
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "Failed to delete product.");
     }
   };
 
@@ -83,12 +94,12 @@ const ProductsPage: React.FC = () => {
   return (
     <>
       <div className="min-h-screen bg-gray-100">
-        <header className="bg-white shadow-sm">
+        <header className="bg-white shadow-sm sticky top-0 z-10">
           <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
             <div>
               <Link
                 to="/"
-                className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+                className="text-sm font-medium text-indigo-600 hover:text-indigo-500 flex items-center gap-1">
                 &larr; Back to Dashboard
               </Link>
               <h1 className="text-3xl font-bold leading-tight text-gray-900 mt-1">
@@ -96,7 +107,7 @@ const ProductsPage: React.FC = () => {
               </h1>
             </div>
             <Button onClick={() => setIsAddModalOpen(true)} className="w-auto">
-              Add New Product
+              Add Product
             </Button>
           </div>
         </header>
@@ -127,16 +138,29 @@ const ProductsPage: React.FC = () => {
               {products.map((product) => (
                 <div
                   key={product.id}
-                  className="bg-white shadow-lg rounded-lg p-6 flex flex-col justify-between">
+                  className="bg-white shadow-lg rounded-lg p-6 flex flex-col justify-between transition-shadow hover:shadow-xl">
                   <div>
                     <div className="flex justify-between items-start">
-                      <h3 className="text-lg font-bold text-gray-900">
+                      <h3 className="text-xl font-bold text-gray-900 flex-grow pr-2">
                         {product.name}
                       </h3>
                       <button
                         onClick={() => handleOpenDeleteModal(product)}
-                        className="text-gray-400 hover:text-red-600">
-                        &times;
+                        className="text-gray-400 hover:text-red-600 transition-colors"
+                        title={`Delete ${product.name}`}>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-6 w-6"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          />
+                        </svg>
                       </button>
                     </div>
                     <p className="text-3xl font-bold text-indigo-600 mt-2">
@@ -148,15 +172,29 @@ const ProductsPage: React.FC = () => {
                     </p>
                     <div className="mt-4 pt-4 border-t">
                       <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                        Composition
+                        Cost Breakdown
                       </h4>
                       <ul className="mt-2 space-y-1 text-sm text-gray-700">
                         {product.ingredients.map((ing) => (
                           <li key={ing.id} className="flex justify-between">
-                            <span>{ing.rawMaterial.name}</span>
-                            <span>{ing.percentage}%</span>
+                            <span>
+                              {ing.rawMaterial.name} ({ing.percentage}%)
+                            </span>
+                            <span className="text-gray-500">
+                              {currencyFormatter.format(
+                                (ing.percentage / 100) * ing.rawMaterial.cost
+                              )}
+                            </span>
                           </li>
                         ))}
+                        <li className="flex justify-between font-medium border-t pt-1 mt-1">
+                          <span>Ingredient Cost</span>
+                          <span>
+                            {currencyFormatter.format(
+                              product.totalCost - product.additionalCost
+                            )}
+                          </span>
+                        </li>
                         {product.additionalCost > 0 && (
                           <li className="flex justify-between font-medium">
                             <span>Additional Costs</span>
@@ -210,7 +248,7 @@ const AddProductModal: React.FC<{
   const [name, setName] = useState("");
   const [additionalCost, setAdditionalCost] = useState("0");
   const [ingredients, setIngredients] = useState<IngredientInput[]>([
-    { rawMaterial: null, percentage: "" },
+    { key: Date.now().toString(), rawMaterial: null, percentage: "" },
   ]);
   const [availableMaterials, setAvailableMaterials] = useState<RawMaterial[]>(
     []
@@ -235,7 +273,15 @@ const AddProductModal: React.FC<{
   }, []);
 
   useEffect(() => {
-    if (isOpen) fetchMaterials();
+    if (isOpen) {
+      fetchMaterials();
+      // Reset form on open
+      setName("");
+      setAdditionalCost("0");
+      setIngredients([
+        { key: Date.now().toString(), rawMaterial: null, percentage: "" },
+      ]);
+    }
   }, [isOpen, fetchMaterials]);
 
   const handleIngredientChange = (
@@ -249,7 +295,10 @@ const AddProductModal: React.FC<{
   };
 
   const addIngredientRow = () =>
-    setIngredients([...ingredients, { rawMaterial: null, percentage: "" }]);
+    setIngredients([
+      ...ingredients,
+      { key: Date.now().toString(), rawMaterial: null, percentage: "" },
+    ]);
   const removeIngredientRow = (index: number) =>
     setIngredients(ingredients.filter((_, i) => i !== index));
 
@@ -272,8 +321,11 @@ const AddProductModal: React.FC<{
       toast.success(`'${newMaterialName}' created successfully.`);
       const newMaterial = response.data;
 
-      await fetchMaterials(); // Refetch all materials
-      materialCreationCallback?.(newMaterial); // Use callback to set it in the combobox
+      // Update available materials list and use the callback to set the new material in the combobox
+      setAvailableMaterials((prev) =>
+        [...prev, newMaterial].sort((a, b) => a.name.localeCompare(b.name))
+      );
+      materialCreationCallback?.(newMaterial);
 
       setCreateMaterialModalOpen(false);
       setNewMaterialName("");
@@ -294,7 +346,7 @@ const AddProductModal: React.FC<{
     );
     if (Math.abs(totalPercentage - 100) > 0.01) {
       toast.error(
-        `Percentages must add up to 100%. Current total: ${totalPercentage.toFixed(
+        `Ingredient percentages must add up to 100%. Current total: ${totalPercentage.toFixed(
           2
         )}%`
       );
@@ -318,10 +370,6 @@ const AddProductModal: React.FC<{
       await apiClient.post("/products", payload);
       toast.success("Product created successfully!");
       onProductAdded();
-      // Reset form state
-      setName("");
-      setAdditionalCost("0");
-      setIngredients([{ rawMaterial: null, percentage: "" }]);
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to create product.");
     } finally {
@@ -347,7 +395,7 @@ const AddProductModal: React.FC<{
             </label>
             <div className="space-y-3 mt-1">
               {ingredients.map((ing, index) => (
-                <div key={index} className="flex items-center gap-2">
+                <div key={ing.key} className="flex items-center gap-2">
                   <div className="flex-grow">
                     <Combobox
                       items={availableMaterials}
@@ -362,29 +410,49 @@ const AddProductModal: React.FC<{
                       }
                     />
                   </div>
-                  <Input
-                    label=""
-                    id={`percentage-${index}`}
-                    type="number"
-                    step="0.01"
-                    value={ing.percentage}
-                    onChange={(e) =>
-                      handleIngredientChange(
-                        index,
-                        "percentage",
-                        e.target.value
-                      )
-                    }
-                    required
-                    placeholder="%"
-                    className="w-24"
-                  />
+                  <div className="relative w-24">
+                    <Input
+                      label=""
+                      id={`percentage-${index}`}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={ing.percentage}
+                      onChange={(e) =>
+                        handleIngredientChange(
+                          index,
+                          "percentage",
+                          e.target.value
+                        )
+                      }
+                      required
+                      placeholder="%"
+                      className="pr-6"
+                    />
+                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                      <span className="text-gray-500 sm:text-sm">%</span>
+                    </div>
+                  </div>
                   <button
                     type="button"
                     onClick={() => removeIngredientRow(index)}
-                    className="text-gray-400 hover:text-red-600 p-2"
-                    disabled={ingredients.length <= 1}>
-                    &times;
+                    className="text-gray-400 hover:text-red-600 p-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={ingredients.length <= 1}
+                    title="Remove Ingredient">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
                   </button>
                 </div>
               ))}
@@ -401,6 +469,7 @@ const AddProductModal: React.FC<{
             id="additional-cost"
             type="number"
             step="0.01"
+            min="0"
             value={additionalCost}
             onChange={(e) => setAdditionalCost(e.target.value)}
           />
@@ -436,6 +505,7 @@ const AddProductModal: React.FC<{
             id="new-mat-cost"
             type="number"
             step="0.01"
+            min="0"
             value={newMaterialCost}
             onChange={(e) => setNewMaterialCost(e.target.value)}
             required
